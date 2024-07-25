@@ -21,8 +21,8 @@ u_g = -\frac{g}{f}\frac{\partial SSH}{\partial y} \\
 v_g = \frac{g}{f}\frac{\partial SSH}{\partial x}
 ```
 
-![Geostrophic Velocities](Figures/geostrophic_fit.png)
-*Figure 1: Geostrophic velocities computed from noisy (a) and noiseless (b) SSH fields, using central point difference (left panels) and 2D SSH fit with kernel widths of 5, 9, and 13 points, respectively from left to right.*
+![Geostrophic Velocities](geostrophic_fit.png)
+*Geostrophic velocities computed from noisy (a) and noiseless (b) SSH fields, using central point difference (left panels) and 2D SSH fit with kernel widths of 5, 9, and 13 points, respectively from left to right.*
 
 By adjusting the kernel width, this method allows computation of derivatives that are more accurate and less noisy than the central grid point differences, on original (not denoised) and unsmoothed (250 m pixels) SWOT SSH data. Figure 1 shows the resulting geostrophic velocity field for central point difference and SSH fit methods, on the noisy original (a) and the denoised (b) SWOT SSHs.
 
