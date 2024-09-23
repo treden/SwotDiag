@@ -152,6 +152,33 @@ def compute_relative_vorticity_from_eta(eta, x, y, proj = 'lonlat', derivative =
 
     return zeta
 
+def compute_divergence_from_uv(u, v, x, y, proj = 'lonlat', derivative = 'dxdy', lat = None, n = 9, parallel = True, axis = (-2,-1), verbose = True):
+
+    x, y = np.asanyarray(x), np.asanyarray(y)
+
+    if proj == 'lonlat':
+        f = compute_f(y)
+    elif (proj == 'xy')&(not isinstance(lat,type(None))):
+        f = compute_f(lat)
+    else:
+        print('Bad "proj" argument (must be "lonlat" or "xy") or bad "lat" argument')
+        return
+        
+    if derivative == 'dxdy':
+        dxu = first_derivative(u, n = n, axis = axis)[1]
+        dyv = first_derivative(v, n = n, axis = axis)[0]
+    elif derivative == 'fit':
+        dxu, dyu = fit_derivatives(u, n = n, parallel = parallel, order = 1, verbose = verbose)
+        dxv, dyv = fit_derivatives(v, n = n, parallel = parallel, order = 1, verbose = verbose)
+
+    if f.shape != dxu.shape:
+        f = (np.ones((len(x),len(y)))*f).T
+        
+    e1, e2 = scale_factor(x, y, proj = proj)
+    div = (dxu/e1 + dyv/e2)/f
+    
+    return div
+
 def compute_relative_vorticity_from_uv(u, v, x, y, proj = 'lonlat', derivative = 'dxdy', lat = None, n = 9, parallel = True, axis = (-2,-1), verbose = True):
 
     x, y = np.asanyarray(x), np.asanyarray(y)
