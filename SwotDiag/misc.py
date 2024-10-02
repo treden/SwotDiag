@@ -68,73 +68,6 @@ def first_derivative(E, n = 9, axis = (-2,-1)):
         D = D[0]
     return np.array(D)
 
-def second_derivative(E, n = 9, axis = (-2,-1)):
-
-    """
-    Returns the second derivative using an n-point stencil method.
-
-    Parameters:
-        E : array_like
-            A N-dimensional array.
-        n : int, optional
-            Number of points in the stencil (default is 9).
-        axis : int or tuple of ints, optional
-            Axis or axes along which to compute the derivative. Default is (-2,-1).
-
-    Returns:
-        ndarray
-            The second derivative along the specified axis or axes.
-    """
-
-    E = np.asanyarray(E)
-    axis = tuple(np.hstack([axis]))
-    D = []
-    
-    if n == 3:
-        for ax in axis:
-            e = E.swapaxes(ax, 0)
-            de = np.ones(np.shape(e))*np.nan
-            de[1:-1] = np.array(e[2:] - 2*e[1:-1] + e[:-2])
-            
-            D.append(de.swapaxes(0, ax))
-    
-    elif n == 5:
-        for ax in axis:
-            e = E.swapaxes(ax, 0)
-            de = np.zeros(np.shape(e))
-            de[2:-2] = np.array(-e[4:] + 16*e[3:-1] - 30*e[2:-2] + 16*e[1:-3] - e[:-4])/12
-            
-            de[:2] = second_derivative(e[:10], axis = 0, n = n-2)[:2]
-            de[-2:] = second_derivative(e[-10:], axis = 0, n = n-2)[-2:] 
-                        
-            D.append(de.swapaxes(0, ax))
-    
-    elif n == 7:
-        
-        for ax in axis:
-            e = E.swapaxes(ax, 0)
-            de = np.zeros(np.shape(e))
-            de[3:-3] = np.array(2*e[6:] - 27*e[5:-1] +270*e[4:-2] - 490*e[3:-3] + 270*e[2:-4] - 27*e[1:-5] +2*e[:-6])/180
-            
-            de[:3] = second_derivative(e[:10], axis = 0, n = n-2)[:3]
-            de[-3:] = second_derivative(e[-10:], axis = 0, n = n-2)[-3:] 
-                        
-            D.append(de.swapaxes(0, ax))
-    
-    elif n == 9:
-        for ax in axis:
-            e = E.swapaxes(ax, 0)
-            de = np.zeros(np.shape(e))
-            de[4:-4] = np.array(-9*e[8:]+128*e[7:-1]-1008*e[6:-2] + 8064*e[5:-3] - 14350*e[4:-4] +8064*e[3:-5]- 1008*e[2:-6] +128*e[1:-7] - 9*e[:-8])/5040
-
-            de[:4] = second_derivative(e[:10], axis = 0, n = n-2)[:4]
-            de[-4:] = second_derivative(e[-10:], axis = 0, n = n-2)[-4:]
-    
-            D.append(de.swapaxes(0, ax))
-            
-    if len(D) == 1:
-        D = D[0]
-    return D
 
 def generate_polynomial_terms(x, y=None, order=2, x_order=None, y_order=None, return_str=False):
     """
@@ -187,7 +120,7 @@ def generate_polynomial_terms(x, y=None, order=2, x_order=None, y_order=None, re
 
     return terms
 
-def fit_surface(data, x=None, y=None, return_coef=False, proj='lonlat', order=1, x_order=None, y_order=None, direction='xy'):
+def fit_surface(data, x=None, y=None, return_coef=False, proj='lonlat', order=1, x_order=None, y_order=None, direction='xy', kernel = 'square'):
     """
     Fits a surface to the given data.
 
@@ -229,7 +162,10 @@ def fit_surface(data, x=None, y=None, return_coef=False, proj='lonlat', order=1,
 
     # If x and y are not provided, create them
     if x is None:
-        x, y = np.meshgrid(np.arange(0, data.shape[-1], 1), np.arange(0, data.shape[-2], 1))
+        # x, y = np.meshgrid(np.arange(0, data.shape[-1], 1), np.arange(0, data.shape[-2], 1))
+        x, y = np.meshgrid(np.arange(-int(data.shape[-1]/2), int(data.shape[-1]/2) + 1, 1), np.arange(-int(data.shape[-2]/2), int(data.shape[-2]/2) + 1, 1))
+
+    n = np.min(data.shape)
 
     # Flatten x and y
     x = np.ravel(x)
@@ -247,6 +183,14 @@ def fit_surface(data, x=None, y=None, return_coef=False, proj='lonlat', order=1,
         x = x[~ind_nan]
         y = y[~ind_nan]
         surface = np.zeros(np.hstack((1, data.shape)))
+
+    if kernel == 'circular':
+        center_x, center_y = 0, 0  # Assuming the center is at (0, 0) for meshgrid centered at origin
+        distances = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+        within_radius = distances <= n/2#int(n/2)  +1
+        x = x[within_radius]
+        y = y[within_radius]
+        b = b[within_radius]
 
     # Set direction variable based on input
     if direction == 'x':
@@ -272,88 +216,105 @@ def fit_surface(data, x=None, y=None, return_coef=False, proj='lonlat', order=1,
         return fit
         
     # Reconstruct the surface using the original x and y arrays
-    surface = np.dot(A_orig, fit).reshape(surface.shape)
+    surface = np.dot(A_orig, fit)
+    # surface = surface
 
-    return surface.squeeze()
+    if kernel == 'circular':
+        center_x, center_y = 0, 0  # Assuming the center is at (0, 0) for meshgrid centered at origin
+        distances = np.sqrt((x_orig - center_x) ** 2 + (y_orig - center_y) ** 2)
+        within_radius = distances <= n/2 # int(n/2) +1
+        surface[~within_radius] = np.nan
 
+    return surface.reshape(data.shape).squeeze()
 
-def fit_derivatives(E, n = 9, order = 1, parallel = True, verbose = True):
-
+def fit_derivatives(E, n=9, order=1, parallel=True, verbose=True, kernel = 'square'):
     """
-    Fits the slope and curvature (first and second derivatives) from a surface.
+    Calculate the first and second-order spatial derivatives of a 2D surface 
+    represented by the array E. This is achieved by applying a fitting kernel 
+    on subsets of n points. The function supports parallel processing making it 
+    particularly efficient for large datasets, such as those derived from 
+    SWOT sea surface height (SSH) observations.
 
     Parameters:
         E : array_like
-            A N-dimensional array.
+            A 2D (or N-dimensional) array representing the surface data 
+            from which derivatives will be calculated.
         n : int, optional
-            Number of points in the stencil (default is 9).
+            The size (number of points) of the kernel used for fitting. It must be an 
+            odd integer. If an even integer is provided, it will be 
+            incremented by 1. Default is 9.
+        order : int, optional
+            The order of derivatives to compute. Can be either 1 (first order) 
+            or 2 (second order). Default is 1.
         parallel : bool, optional
-            If True, computes in parallel (default is True).
+            If True, computes in parallel using joblib. Default is True.
+        verbose : bool, optional
+            If True, displays a progress bar using tqdm. Default is True.
 
     Returns:
         tuple of ndarrays
-            The fitted slope in the x and y directions.
+            The fitted coefficients. For first-order fits, returns two 
+            arrays representing the slope in the x and y directions. 
+            For second-order fits, returns five arrays representing the 
+            coefficients for x², xy, x, y², and y.
+
+    Notes:
+        If `n` is not an odd number, it will be incremented to the nearest odd number.
+        If parallel processing or verbose mode cannot be enabled due to import errors, 
+        the function will revert to sequential processing without progress bars.
     """
-
-    if parallel:
-        return fit_derivatives_parallel(E, n, order, verbose)
-        
-    E = np.asanyarray(E)
-    m1,m2 = np.shape(E)
     
-    if verbose:
-        from tqdm import tqdm
-        iterator = tqdm(range(m1))
-    else:
-        iterator = range(m1)
-        
-    if order == 1:
-        a1, a2 = np.ones((m1, m2))*np.nan, np.ones((m1, m2))*np.nan
-        for j in iterator:
-            for i in range(m2):
-                subset = E[j-int(n/2):j+int(np.ceil(n/2)), i-int(n/2):i+int(np.ceil(n/2))]
-                if (not np.isnan(subset).any())&(subset.size == n**2):
-                    fit = fit_surface(subset, return_coef=True, order = order)
-                    a1[j, i], a2[j, i] = fit[0], fit[1]
-        return a1,a2
-    
-    elif order == 2:
-        a1, a2, a3, a4, a5 = np.ones((m1, m2))*np.nan, np.ones((m1, m2))*np.nan, np.ones((m1, m2))*np.nan, np.ones((m1, m2))*np.nan, np.ones((m1, m2))*np.nan
-        for j in iterator:
-            for i in range(m2):
-                subset = E[j-int(n/2):j+int(np.ceil(n/2)), i-int(n/2):i+int(np.ceil(n/2))]
-                if (not np.isnan(subset).any())&(subset.size == n**2):
-                    fit = fit_surface(subset, return_coef=True, order = order)
-                    a1[j, i], a2[j, i], a3[j, i], a4[j, i], a5[j, i] = fit[0], fit[1], fit[2], fit[3],fit[4]
-        return a1,a2,a3,a4,a5
-
-def fit_derivatives_parallel(E, n=9, order = 1, verbose = True):
-    
-    from joblib import Parallel, delayed
+    # Check if n is odd, and increment if necessary
+    if n % 2 != 1:
+        print(f'n = {n} is not an odd number, increasing the kernel length to {n + 1}')
+        n += 1
 
     E = np.asanyarray(E)
     m1, m2 = np.shape(E)
-    
+
     def process_subset(j, i):
+        """Process a subset of the input array to fit the surface."""
         subset = E[j-int(n/2):j+int(np.ceil(n/2)), i-int(n/2):i+int(np.ceil(n/2))]
-        if (np.count_nonzero(np.isnan(subset))<(n**2)/2.5) and (subset.size >= (n**2)):
-        # if (subset.size == n**2):
-            fit = fit_surface(subset, return_coef=True, order = order)
+        if (np.count_nonzero(np.isnan(subset)) < (n**2) / 4) and (subset.size >= (n**2)):
+            fit = fit_surface(subset, return_coef=True, order=order, kernel = kernel)
             return fit
         else:
             if order == 1:
                 return np.nan, np.nan
             elif order == 2:
                 return np.nan, np.nan, np.nan, np.nan, np.nan
-                
-    if verbose:
-        from tqdm import tqdm
-        iterator = tqdm(range(m1))
-    else:
+
+    # Attempt to import tqdm for progress tracking
+    try:
+        if verbose:
+            from tqdm import tqdm
+            iterator = tqdm(range(m1), desc=f"Fitting derivatives on {m1*m2} points ({n}*{n} points kernel)")
+        else:
+            iterator = range(m1)
+    except ImportError:
+        print("TQDM library not available. Running without progress bar.")
+        verbose = False
         iterator = range(m1)
-                
-    results = Parallel(n_jobs=-1)(delayed(process_subset)(j, i) for j in iterator for i in range(m2))
-    
+
+    # Attempt to import joblib for parallel processing
+    try:
+        if parallel:
+            from joblib import Parallel, delayed                
+            results = Parallel(n_jobs=-1)(delayed(process_subset)(j, i) for j in iterator for i in range(m2))
+        else:
+            results = []
+            for j in iterator:
+                for i in range(m2):
+                    results.append(process_subset(j, i))
+    except ImportError:
+        print("Joblib library not available. Running in sequential mode.")
+        parallel = False
+        results = []
+        for j in iterator:
+            for i in range(m2):
+                results.append(process_subset(j, i))
+
+    # Reshape results into appropriate arrays
     a1 = np.array([result[0] for result in results]).reshape((m1, m2))
     a2 = np.array([result[1] for result in results]).reshape((m1, m2))
 
@@ -361,11 +322,15 @@ def fit_derivatives_parallel(E, n=9, order = 1, verbose = True):
         a3 = np.array([result[2] for result in results]).reshape((m1, m2))
         a4 = np.array([result[3] for result in results]).reshape((m1, m2))
         a5 = np.array([result[4] for result in results]).reshape((m1, m2))
-        return a1, a2, a3, a4, a5
+        return a1*2, a2, a3, a4*2, a5
     else:
         return a1, a2
 
 def distance(lon1, lat1, lon2, lat2):
+   
+   #### Compute the distance on a sphere using Haversine formula
+
+   #### TODO : Integrate ellipsoidal distance calculations 
     
    lat1 = deg2rad*(lat1)
    lon1 = deg2rad*(lon1)
@@ -386,6 +351,9 @@ def compute_dxdy(x, y, proj = 'lonlat'):
     djy, diy = np.gradient(y)
     
     if proj == 'lonlat':
+
+        # TODO 
+
         dix = dix*111320*np.cos(deg2rad*y)
         djx = djx*111320*np.cos(deg2rad*y)
         diy = diy*110574

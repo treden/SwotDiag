@@ -3,7 +3,7 @@ import scipy
 from .misc import *
 
 g = 9.81
-omega = 7.292115e-5  # (1/s)   (Groten, 2004).
+omega = 7.292115e-5  # (1/s) (Groten, 2004).
 
 def compute_f(lat):
     """
@@ -21,263 +21,123 @@ def compute_f(lat):
     f = 2 * omega * np.sin(np.radians(lat))
     return np.asanyarray(f)
     
-def compute_geostrophic_velocities(eta, x, y, proj = 'lonlat', derivative = 'dxdy', lat = None, n = 9, parallel = True, axis = (-2,-1), verbose = True):
-
+def compute_ocean_diagnostics_from_eta(eta, x, y, proj='lonlat', derivative='dxdy', lat=None, n=9, parallel=True, axis=(-2, -1), verbose=True, kernel = 'circular'):
     """
-    Computes the geostrophic velocities.
+    This function calculates geostrophic and cyclo-geostrophic currents, strain rate, 
+    and relative vorticity based on the provided sea surface height data 'eta'. The calculations 
+    can be performed using different derivative methods and may include parallel processing. 
 
     Parameters:
         eta : array_like
-            A N-dimensional array representing the height field.
+            Sea surface heights.
         x : array_like
-            The x-coordinates of the grid.
+            X-coordinates (longitude or Cartesian).
         y : array_like
-            The y-coordinates of the grid.
+            Y-coordinates (latitude or Cartesian).
         proj : str, optional
-            Projection type ('lonlat' or 'xy', default is 'lonlat').
+            Projection type; can be 'lonlat' for geographic coordinates or 'xy' for Cartesian coordinates (default is 'lonlat').
         derivative : str, optional
-            Method for computing derivatives ('dxdy' or 'fit', default is 'dxdy').
-        lat : float, optional
-            Latitude for computing the Coriolis parameter (default is None).
+            Method for calculating derivatives; can be 'dxdy' (using first derivatives) or 'fit' (using fitting derivatives) (default is 'dxdy').
+        lat : array_like, optional
+            Latitude values, required if proj is 'xy'.
         n : int, optional
-            Number of points in the stencil or in the kernel (default is 9).
+            Size of the stencil used for derivative calculations (default is 9).
         parallel : bool, optional
-            If True, computes in parallel (default is True).
-        axis : int or tuple of ints, optional
-            Axis or axes along which to compute the derivative. Default is (-2,-1).
+            If True, uses parallel processing for efficiency (default is True).
+        axis : tuple of int, optional
+            Axes along which to compute derivatives (default is (-2, -1)).
+        verbose : bool, optional
+            If True, enables verbose output for tracking progress (default is True).
 
     Returns:
-        tuple of ndarrays
-            The geostrophic velocities in the x and y directions.
+        dict
+            A dictionary containing:
+                - 'ug': Geostrophic eastward current
+                - 'vg': Geostrophic northward current
+                - 'ucg': Cyclo-geostrophic eastward current
+                - 'vcg': Cyclo-geostrophic northward current
+                - 'S': Strain rate
+                - 'zeta': Relative vorticity
     """
+    
+    # Initialize diagnostics dictionary
+    diag = {}
 
+    # Ensure input arrays are numpy arrays
     x, y = np.asanyarray(x), np.asanyarray(y)
 
-    axis = tuple(np.hstack([axis]))
-        
+    # Compute Coriolis parameter based on projection
     if proj == 'lonlat':
         f = compute_f(y)
-    elif (proj == 'xy')&(not isinstance(lat,type(None))):
+    elif proj == 'xy' and lat is not None:
         f = compute_f(lat)
     else:
-        print('Bad "proj" argument (must be "lonlat" or "xy") or bad "lat" argument')
+        print('Invalid "proj" argument (must be "lonlat" or "xy") or "lat" is missing.')
         return
-        
-    # dyeta, dxeta = np.gradient(eta, axis = (-2,-1))
+    
+    # Compute first and second derivatives
     if derivative == 'dxdy':
-        dyeta, dxeta = first_derivative(eta, n=n, axis = axis)
+        # Compute first derivatives by finite differences
+        dy, dx = first_derivative(eta, n=n, axis=axis)
+        dyy, dyx = first_derivative(dy, n=n, axis=axis)
+        dxy, dxx = first_derivative(dx, n=n, axis=axis)
     elif derivative == 'fit':
-        fit = fit_derivatives(eta, n = n, parallel = parallel, order = 1, verbose = verbose)
-        dxeta, dyeta = fit[0], fit[1]
+        # Fit derivatives using the fitting kernel method
+        dxx, dxy, dx, dyy, dy = fit_derivatives(eta, n=n, parallel=parallel, order=2, verbose=verbose, kernel = kernel)
+        
+    # Ensure the Coriolis parameter has the correct shape
+    if f.shape != dx.shape:
+        f = (np.ones((len(x), len(y))) * f).T
 
-    if f.shape != dxeta.shape:
-        f = (np.ones((len(x),len(y)))*f).T
+    # Compute scale factors
+    e1, e2 = scale_factor(x, y, proj=proj)
+    
+    # Normalize derivatives by scale factors
+    dxx, dxy, dx, dyy, dy = (
+        dxx / (e1 ** 2), 
+        dxy / (e1 * e2), 
+        dx / np.abs(e1), 
+        dyy / (e2 ** 2), 
+        dy / np.abs(e2)
+    )
 
-    e1, e2 = scale_factor(x, y, proj = proj)
-    ug = (-g/f*dyeta)/np.abs(e2)
-    vg = (g/f*dxeta)/np.abs(e1)
+    # Re-adjust the Coriolis parameter shape if necessary
+    if f.shape != dxx.shape:
+        f = (np.ones((len(x), len(y))) * f).T
 
+    ### Calculate geostrophic currents and Cyclo-geostrophic currents (first approximation, see Tranchant et al., 2024)
+    ug, vg = (-g / f * dy), (g / f * dx)  # Geostrophic currents
+    ucg, vcg = (
+        (-g / f * dy) + (g ** 2 / f ** 3) * (dy * dxx - dx * dxy), 
+        (g / f * dx) + (g ** 2 / f ** 3) * (dy * dxy - dx * dyy)
+    )  # Cyclo-geostrophic currents (first approximation)
+
+    # Rotate currents along x and y axis
     if x.ndim > 1:
-        theta = compute_angle(x, y, proj = proj)
+        theta = compute_angle(x, y, proj=proj)
         if eta.ndim == 3:
-            ug, vg = np.swapaxes([rotate(_ug , _vg , theta) for _ug, _vg in zip(ug, vg)], 0, 1)
+            # Rotate currents for 3D eta
+            ug, vg = np.swapaxes([rotate(_u, _v, theta) for _u, _v in zip(ug, vg)], 0, 1)
+            ucg, vcg = np.swapaxes([rotate(_u, _v, theta) for _u, _v in zip(ucg, vcg)], 0, 1)
         elif eta.ndim == 2:
-            ug, vg = rotate(ug , vg , theta)
+            # Rotate currents for 2D eta
+            ug, vg = rotate(ug, vg, theta)
+            ucg, vcg = rotate(ucg, vcg, theta)
+    # Store currents in diagnostics dictionary
+    diag['ug'] = ug
+    diag['vg'] = vg
+    diag['ucg'] = ucg
+    diag['vcg'] = vcg   
 
-    return ug, vg
+    ### Calculate strain rate
+    Sn = 2 * (g / f) * dxy
+    Ss = (g / f) * (dxx - dyy)
+    S = np.sqrt(Sn ** 2 + Ss ** 2) / np.abs(f)
 
-def compute_relative_vorticity_from_eta(eta, x, y, proj = 'lonlat', derivative = 'dxdy', lat = None, n = 9, parallel = True, axis = (-2,-1), verbose = True):
-    """
-    Computes the relative vorticity from the surface height.
+    diag['S'] = S
 
-    Parameters:
-        eta : array_like
-            A N-dimensional array representing the height field.
-        x : array_like
-            The x-coordinates of the grid.
-        y : array_like
-            The y-coordinates of the grid.
-        proj : str, optional
-            Projection type ('lonlat' or 'xy', default is 'lonlat').
-        derivative : str, optional
-            Method for computing derivatives ('dxdy' or 'fit', default is 'dxdy').
-        lat : float, optional
-            Latitude for computing the Coriolis parameter (default is None).
-        n_stencil : int, optional
-            Number of points in the stencil (default is 9).
+    ### Calculate relative vorticity
+    zeta = ((g / f * dxx) + (g / f * dyy)) / f
+    diag['zeta'] = zeta
 
-    Returns:
-        ndarray
-            The relative vorticity.
-    """
-
-    x, y = np.asanyarray(x), np.asanyarray(y)
-
-    if proj == 'lonlat':
-        f = compute_f(y)
-    elif (proj == 'xy')&(not isinstance(lat,type(None))):
-        f = compute_f(lat)
-    else:
-        print('Bad "proj" argument (must be "lonlat" or "xy") or bad "lat" argument')
-        return
-        
-    if derivative == 'dxdy':
-        dyeta, dxeta = first_derivative(eta, n=n, axis = axis)
-        dyyeta = first_derivative(dyeta, n=n, axis = axis)[0]
-        dxxeta = first_derivative(dxeta, n=n, axis = axis)[1]
-
-    elif derivative == 'fit':
-        fit = fit_derivatives(eta, n = n, parallel = parallel, order = 1, verbose = verbose)
-        dxeta, dyeta = fit[0], fit[1]
-
-        dxxeta = fit_derivatives(dxeta, n = n, parallel = parallel, order = 1, verbose = verbose)[0]
-        dyyeta = fit_derivatives(dyeta, n = n, parallel = parallel, order = 1, verbose = verbose)[1]
-    
-
-    # if derivative == 'dxdy':
-
-
-    #     dxxeta = second_derivative(eta, n = n, axis = axis)[1]
-    #     dyyeta = second_derivative(eta, n = n, axis = axis)[0]
-    # elif derivative == 'fit':
-        
-    #     # fit =  fit_derivatives(eta, n = n, parallel = parallel, order = 2, verbose = verbose)
-    #     # dxxeta, dyyeta, dxdyeta = fit[0], fit[3], fit[1]
-
-    if f.shape != dxxeta.shape:
-        f = (np.ones((len(x),len(y)))*f).T
-        
-    e1, e2 = scale_factor(x, y, proj = proj)
-    zeta = ((g/f*dxxeta)/e1**2 + (g/f*dyyeta)/e2**2)/f
-
-    return zeta
-
-def compute_divergence_from_uv(u, v, x, y, proj = 'lonlat', derivative = 'dxdy', lat = None, n = 9, parallel = True, axis = (-2,-1), verbose = True):
-
-    x, y = np.asanyarray(x), np.asanyarray(y)
-
-    if proj == 'lonlat':
-        f = compute_f(y)
-    elif (proj == 'xy')&(not isinstance(lat,type(None))):
-        f = compute_f(lat)
-    else:
-        print('Bad "proj" argument (must be "lonlat" or "xy") or bad "lat" argument')
-        return
-        
-    if derivative == 'dxdy':
-        dxu = first_derivative(u, n = n, axis = axis)[1]
-        dyv = first_derivative(v, n = n, axis = axis)[0]
-    elif derivative == 'fit':
-        dxu, dyu = fit_derivatives(u, n = n, parallel = parallel, order = 1, verbose = verbose)
-        dxv, dyv = fit_derivatives(v, n = n, parallel = parallel, order = 1, verbose = verbose)
-
-    if f.shape != dxu.shape:
-        f = (np.ones((len(x),len(y)))*f).T
-        
-    e1, e2 = scale_factor(x, y, proj = proj)
-    div = (dxu/e1 + dyv/e2)/f
-    
-    return div
-
-def compute_relative_vorticity_from_uv(u, v, x, y, proj = 'lonlat', derivative = 'dxdy', lat = None, n = 9, parallel = True, axis = (-2,-1), verbose = True):
-
-    x, y = np.asanyarray(x), np.asanyarray(y)
-
-    if proj == 'lonlat':
-        f = compute_f(y)
-    elif (proj == 'xy')&(not isinstance(lat,type(None))):
-        f = compute_f(lat)
-    else:
-        print('Bad "proj" argument (must be "lonlat" or "xy") or bad "lat" argument')
-        return
-        
-    if derivative == 'dxdy':
-        dxv = first_derivative(v, n = n, axis = axis)[1]
-        dyu = first_derivative(u, n = n, axis = axis)[0]
-    elif derivative == 'fit':
-        dxu, dyu = fit_derivatives(u, n = n, parallel = parallel, order = 1, verbose = verbose)
-        dxv, dyv = fit_derivatives(v, n = n, parallel = parallel, order = 1, verbose = verbose)
-
-    if f.shape != dxv.shape:
-        f = (np.ones((len(x),len(y)))*f).T
-        
-    e1, e2 = scale_factor(x, y, proj = proj)
-    zeta = (dxv/e1 - dyu/e2)/f
-    
-    return zeta
-
-def compute_strain_rate_from_eta(eta, x, y, proj = 'lonlat', derivative = 'dxdy', lat = None, n_stencil = 9, parallel = True, axis = (-2,-1)):
-
-    """
-    Computes the strain rate from the surface height.
-
-    Parameters:
-        eta : array_like
-            A N-dimensional array representing the height field.
-        x : array_like
-            The x-coordinates of the grid.
-        y : array_like
-            The y-coordinates of the grid.
-        proj : str, optional
-            Projection type ('lonlat' or 'xy', default is 'lonlat').
-        derivative : str, optional
-            Method for computing derivatives ('dxdy' or 'fit', default is 'dxdy').
-        lat : float, optional
-            Latitude for computing the Coriolis parameter (default is None).
-        n_stencil : int, optional
-            Number of points in the stencil (default is 9).
-
-    Returns:
-        ndarray
-            The strain rate.
-    """
-
-    x, y = np.asanyarray(x), np.asanyarray(y)
-
-    if proj == 'lonlat':
-        f = compute_f(y.mean())
-    elif (proj == 'xy')&(not isinstance(lat,type(None))):
-        f = compute_f(lat)
-    else:
-        print('Bad "proj" argument (must be "lonlat" or "xy") or bad "lat" argument')
-        return
-        
-    if derivative == 'dxdy':
-        dxxeta = second_derivative(eta, n = n_stencil, axis = axis)[1]
-        dyyeta = second_derivative(eta, n = n_stencil, axis = axis)[0]
-        dxdyeta = first_derivative(first_derivative(eta, n = n_stencil, axis = axis)[0], n = n_stencil, axis = axis)[1]
-
-    elif derivative == 'fit':
-        fit =  fit_derivatives(eta, n = n_stencil, parallel = parallel, order = 2)
-        dxxeta, dyyeta, dxdyeta = fit[0], fit[3], fit[1]
-        
-    e1, e2 = scale_factor(x, y, proj = proj)
-    
-    Sn = 2*(g/f)*dxdyeta/(e1*e2)
-    Ss = (g/f)*(dxxeta/(e1**2) - dyyeta/(e2**2))
-    
-    S = np.sqrt(Sn**2 + Ss**2)/np.abs(f)
-
-    return S
-
-def compute_EKE(ug, vg, ug_mean, vg_mean):
-    
-    """
-    Computes the eddy kinetic energy.
-
-    Parameters:
-        ug : array_like
-            A N-dimensional array representing the zonal velocity anomaly.
-        vg : array_like
-            A N-dimensional array representing the meridional velocity anomaly.
-        ug_mean : array_like
-            A N-dimensional array representing the mean zonal velocity.
-        vg_mean : array_like
-            A N-dimensional array representing the mean meridional velocity.
-
-    Returns:
-        ndarray
-            The eddy kinetic energy.
-    """
-
-    return 0.5*((ug - ug_mean)**2 + (vg - vg_mean)**2)
+    return diag
