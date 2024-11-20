@@ -120,7 +120,7 @@ def generate_polynomial_terms(x, y=None, order=2, x_order=None, y_order=None, re
 
     return terms
 
-def fit_surface(data, x=None, y=None, return_coef=False, proj='lonlat', order=1, x_order=None, y_order=None, direction='xy', kernel = 'square'):
+def fit_surface(data, x=None, y=None, return_coef=False, proj='lonlat', order=1, x_order=None, y_order=None, direction='xy', kernel = 'circular'):
     """
     Fits a surface to the given data.
 
@@ -227,7 +227,8 @@ def fit_surface(data, x=None, y=None, return_coef=False, proj='lonlat', order=1,
 
     return surface.reshape(data.shape).squeeze()
 
-def fit_derivatives(E, n=9, order=1, parallel=True, verbose=True, kernel = 'square'):
+def fit_derivatives(E, n=9, order=1, parallel=True, verbose=True, kernel = 'circular', return_ssh = False, min_valid_points = 0.5):
+
     """
     Calculate the first and second-order spatial derivatives of a 2D surface 
     represented by the array E. This is achieved by applying a fitting kernel 
@@ -275,14 +276,14 @@ def fit_derivatives(E, n=9, order=1, parallel=True, verbose=True, kernel = 'squa
     def process_subset(j, i):
         """Process a subset of the input array to fit the surface."""
         subset = E[j-int(n/2):j+int(np.ceil(n/2)), i-int(n/2):i+int(np.ceil(n/2))]
-        if (np.count_nonzero(np.isnan(subset)) < (n**2) / 4) and (subset.size >= (n**2)):
+        if ((n**2 - np.count_nonzero(np.isnan(subset))) > (n**2)*min_valid_points) and subset.size == (n**2):
             fit = fit_surface(subset, return_coef=True, order=order, kernel = kernel)
             return fit
         else:
             if order == 1:
-                return np.nan, np.nan
+                return np.nan, np.nan, np.nan
             elif order == 2:
-                return np.nan, np.nan, np.nan, np.nan, np.nan
+                return np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 
     # Attempt to import tqdm for progress tracking
     try:
@@ -315,16 +316,26 @@ def fit_derivatives(E, n=9, order=1, parallel=True, verbose=True, kernel = 'squa
                 results.append(process_subset(j, i))
 
     # Reshape results into appropriate arrays
+
+
     a1 = np.array([result[0] for result in results]).reshape((m1, m2))
     a2 = np.array([result[1] for result in results]).reshape((m1, m2))
+    a3 = np.array([result[2] for result in results]).reshape((m1, m2))
 
     if order == 2:
-        a3 = np.array([result[2] for result in results]).reshape((m1, m2))
         a4 = np.array([result[3] for result in results]).reshape((m1, m2))
         a5 = np.array([result[4] for result in results]).reshape((m1, m2))
-        return a1*2, a2, a3, a4*2, a5
+        a6 = np.array([result[5] for result in results]).reshape((m1, m2))
+
+        if return_ssh:
+            return a1*2, a2, a3, a4*2, a5, a6
+        else:
+            return a1*2, a2, a3, a4*2, a5
     else:
-        return a1, a2
+        if return_ssh:
+            return a1, a2, a3
+        else:
+            return a1, a2
 
 def distance(lon1, lat1, lon2, lat2):
    
