@@ -49,7 +49,7 @@ We use the SSH fit method to mitigate the effects of measurement noise and non-b
 ## How to Cite
 
 **Preprint:**  
-Yann-Treden Tranchant, Benoit Legresy, Annie Foppert, et al.  
+Yann-Treden Tranchant, Benoit Legresy, Annie Foppert, Beatriz Pena-Molino, Helen Phillips  
 *SWOT reveals fine-scale balanced motions and dispersion properties in the Antarctic Circumpolar Current.*  
 **ESS Open Archive**, January 11, 2025.  
 [DOI: 10.22541/essoar.173655552.25945463/v1](https://doi.org/10.22541/essoar.173655552.25945463/v1)
