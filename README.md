@@ -46,8 +46,11 @@ where $\ \delta x \$ and $\ \delta y \$ are the zonal and meridional distances b
 ## Mitigating Noise
 
 We use the SSH fit method to mitigate the effects of measurement noise and non-balanced signals when deriving geostrophic velocities, as it acts as a low-pass filter on these velocities.
+## How to Cite
 
-## How to cite
+**Preprint:**  
+Yann-Treden Tranchant, Benoit Legresy, Annie Foppert, et al.  
+*SWOT reveals fine-scale balanced motions and dispersion properties in the Antarctic Circumpolar Current.*  
+**ESS Open Archive**, January 11, 2025.  
+[DOI: 10.22541/essoar.173655552.25945463/v1](https://doi.org/10.22541/essoar.173655552.25945463/v1)
 
-Preprint: Yann-Treden Tranchant, Benoit Legresy, Annie Foppert, et al. SWOT reveals fine-scale balanced motions and dispersion properties in the Antarctic Circumpolar Current. ESS Open Archive . January 11, 2025.
-DOI: 10.22541/essoar.173655552.25945463/v1
