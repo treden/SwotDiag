@@ -167,7 +167,7 @@ def compute_ocean_diagnostics_from_eta(
         Ug = np.sqrt(ug**2 + vg**2)
 
         c = 1+4*K*np.abs(Ug)/f
-        c[c<=0] = np.nan
+        c[c<=0] = 0
         
         ucg = 2*ug/(1+np.sqrt(c))
         vcg = 2*vg/(1+np.sqrt(c))
