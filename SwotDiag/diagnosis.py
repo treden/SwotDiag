@@ -25,7 +25,7 @@ def compute_f(lat):
 def compute_ocean_diagnostics_from_eta(
     eta, x, y, proj='lonlat', derivative='fit', lat=None, n=9, 
     parallel=True, axis=(-2, -1), verbose=True, kernel='circular', 
-    min_valid_points=0.5, second_derivative='dxdy', cyclostrophy='GW'):
+    min_valid_points=0.5, second_derivative='dxdy', cyclostrophy='GW', avoid_negative = False):
     """
     Compute geostrophic and cyclo-geostrophic currents, strain rate, 
     relative vorticity, and other diagnostics from sea surface height (SSH).
@@ -163,11 +163,15 @@ def compute_ocean_diagnostics_from_eta(
     elif cyclostrophy == 'GW': # Gradient-wind method based on flow curvature K, see Jan Jaap, 2022
 
         K = (-dyy*(dx**2)-dxx*(dy**2)+ 2*(dxy*dx*dy))/((dx**2+dy**2)**(3/2))
+        K = np.sign(f) * - K
 
         Ug = np.sqrt(ug**2 + vg**2)
 
         c = 1+4*K*np.abs(Ug)/f
-        c[c<=0] = 0
+
+        if avoid_negative:
+            c = np.maximum(c, 0.01)
+
         
         ucg = 2*ug/(1+np.sqrt(c))
         vcg = 2*vg/(1+np.sqrt(c))

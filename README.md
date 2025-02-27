@@ -1,5 +1,7 @@
 # Geostrophic Velocity Computation from Sea Surface Height (SSH) Data
 
+27/02/2025 : Correction of a bug in the code affecting cyclogeostrophic velocities computation using 'GW' scheme, leading to inverted contribution in northen hemisphere (Southern hemisphor was not affected)
+
 ## Overview
 
 In most oceanographic applications, computing the first derivative at a central grid point involves differencing adjacent SSH in both the x and y directions. To enhance accuracy and correct for anisotropic artifacts, the stencil width of centered differences can be expanded from three points to five, seven, or nine points (Arbic et al., 2012).
