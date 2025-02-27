@@ -1,6 +1,6 @@
 # Geostrophic Velocity Computation from Sea Surface Height (SSH) Data
 
-27/02/2025 : Correction of a bug in the code affecting cyclogeostrophic velocities computation using 'GW' scheme, leading to inverted contribution in northen hemisphere (Southern hemisphor was not affected)
+27/02/2025 : Correction of a bug in the code affecting cyclogeostrophic velocities computation using 'GW' scheme, leading to inverted contribution in northern hemisphere (Southern hemisphere was not affected)
 
 ## Overview
 
